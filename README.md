@@ -11,13 +11,38 @@ A small, site-specific Retrieval-Augmented Generation (RAG) prototype that lets 
 
 ---
 
-## Key features
+## Architecture
 
-- Web crawling with configurable depth and max pages (`crawler.py`).
-- HTML cleaning and text extraction that removes nav, headers, footers, and scripts (`cleaner` logic inside `crawler.py`/`app.py`).
-- Embeddings (Gemini-API by default) and FAISS indexing (`embedding.py`, `data/index.faiss`).
-- Programmatic QA engine for ingestion and querying (`qa.py`).
-- Streamlit-based interactive UI (`app.py`) to ingest sites and ask questions.
+The architecture consists of several components:
+
+- **Crawler:** Responsible for fetching and cleaning web pages.
+- **Embedding Module:** Utilizes the Gemini LLM for generating embeddings from the cleaned text.
+- **Vector Database:** FAISS is used for efficient storage and retrieval of embeddings, allowing for quick access to relevant information during queries.
+- **QA Engine:** Processes user queries and retrieves relevant context from the vector database to generate answers.
+
+---
+
+## LLM Model
+
+**Embedding**: The project uses the **Gemini LLM** for embedding generation. This model was chosen due to its ability to produce high-quality embeddings that capture semantic meaning effectively, which is crucial for accurate information retrieval in the context of user queries.
+
+**Response**: I chose Gemini because it is efficient and easy to integrate using its well-documented APIs. It also offers strong multimodal support, allowing the chatbot to handle different input and output types like text and images, making the system more flexible and scalable.
+
+---
+
+## Vector Database
+
+**FAISS** (Facebook AI Similarity Search) is employed as the vector database. FAISS is selected for its efficiency in handling large-scale vector data and its ability to perform fast nearest neighbor searches, making it ideal for real-time query responses in this application.
+
+---
+
+## Embedding Strategy
+
+The embedding strategy involves:
+
+- Using the Gemini LLM to generate embeddings from the cleaned text extracted by the crawler.
+- Storing these embeddings in FAISS for efficient retrieval during user queries.
+- The system supports embeddings via the Gemini API, allowing flexibility based on deployment needs. For fully local setups, `sentence-transformers` can be used as an alternative embedding provider.
 
 ---
 
@@ -70,7 +95,6 @@ print(answer)
 Notes:
 
 - `generate_response` currently either uses a local generation method or calls a configurable LLM provider.
-- You can set the embedder to `sentence-transformers` for a fully local stack.
 
 ---
 
@@ -97,11 +121,11 @@ Notes:
 
 ---
 
-## Next steps / Improvements
+## Assumptions, Limitations, and Future Improvements
 
-- Add unit and integration tests for the end-to-end ingest -> query flow.
-- Add automated ingest scheduling and index snapshotting.
-- Add a local LLM option (if you want refinement beyond returning retrieved context verbatim).
+- **Assumptions:** The system validates that target websites are accessible and that content is structured in a way that allows for effective crawling and extraction.
+- **Limitations:** The current implementation may struggle with websites that employ heavy JavaScript rendering or have complex navigation structures. Additionally, the performance may vary based on the size of the website and the number of pages crawled.
+- **Future Improvements:** Future work could include enhancing the crawler to handle more complex sites, implementing automated ingest scheduling, and adding a local LLM option for improved performance beyond the current setup.
 
 ---
 

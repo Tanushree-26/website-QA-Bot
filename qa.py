@@ -25,18 +25,31 @@ class QA:
 
         return [chunks[i] for i in indices[0]]
 
+    def get_recent_conversation(self, previous_conversation, max_turns=5):
+        recent_conversation = []
+        for chat in previous_conversation[-max_turns:]:
+            q = chat["question"]
+            a = chat["answer"]
+            recent_conversation.append({"question": q, "answer": a})
+        return recent_conversation
+
     def ask_gemini(self, context, question, previous_conversation=[]):
         prompt = f"""
-            You must answer ONLY using the context below.
-            If the answer is not present, respond exactly with:
-            "The answer is not available on the provided website."
-
+            You are an intelligent assistant tasked with answering questions based on the provided context and previous conversations.
+            Follow these rules strictly:
+            1. If there is no relevant context and no previous conversation, respond with:
+               "The answer is not available on the provided website."
+            2. If there is relevant context, use it to answer the question. But do not mention that you are using the context.
+            3. If there is a previous conversation, incorporate it to provide a coherent and context-aware response.
+ 
             Context:
-            {context}
+            {context if context else "No relevant context provided."}
+            
+            Previous Conversation:
+            {str(previous_conversation) if previous_conversation else "No previous conversation available."}
             
             Question:
             {question}
-            
         """
         response = self.client.models.generate_content(
             model=GEMINI_MODEL,
@@ -46,12 +59,16 @@ class QA:
 
     def answer_question(self, question, previous_conversation=[]):
         retrieved = self.retrieve_chunks(question)
+        recent_conversation = self.get_recent_conversation(
+            previous_conversation)
+        print("recent conversation:", recent_conversation)
 
-        if not retrieved:
+        if not retrieved and not recent_conversation:
+            print("failed to retrieve context and no recent conversation")
             return FAILED_CONTEXT_RETRIEVAL
 
         context = "\n\n".join(retrieved)
-        return self.ask_gemini(context, question, previous_conversation)
+        return self.ask_gemini(context, question, recent_conversation)
 
     def indexing(self, url, max_pages=10):
         data = self.crawler.crawl(url, max_pages)
