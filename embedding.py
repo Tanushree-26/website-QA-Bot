@@ -5,22 +5,64 @@ from google import genai
 import faiss
 import pickle
 import os
+import nltk
+from nltk.tokenize import sent_tokenize
 from config import FAISS_INDEX_PATH, CHUNKS_PATH, MIN_PARA_LENGTH, MAX_PARA_LENGTH, DATA_FOLDER, EMBEDDING_DIMENSION, BATCH_SIZE, API_KEY, EMBEDDING_MODEL
+
+# Download required NLTK data
+try:
+    nltk.data.find('tokenizers/punkt')
+except LookupError:
+    nltk.download('punkt')
 
 
 class Chunk_generator:
     def chunk_text(self, texts: list):
+        """
+        Semantic chunking that respects sentence boundaries.
+        Combines sentences into chunks while maintaining semantic coherence.
+        """
         chunks = []
+        overlap_sentences = 1  # Number of sentences to overlap between chunks
+        
         for text in texts:
             paras = text.split("\n")
             for para in paras:
                 if len(para) > MIN_PARA_LENGTH:
-                    # further split long paragraphs
-                    if len(para) > MAX_PARA_LENGTH:
-                        for i in range(0, len(para), 1500):
-                            chunks.append(para[i: i + 1500])
-                    else:
-                        chunks.append(para)
+                    # Split paragraph into sentences for semantic chunking
+                    sentences = sent_tokenize(para)
+                    
+                    if not sentences:
+                        continue
+                    
+                    # Combine sentences into semantic chunks
+                    current_chunk = ""
+                    sentence_buffer = []
+                    
+                    for sentence in sentences:
+                        sentence = sentence.strip()
+                        if not sentence:
+                            continue
+                        
+                        # Check if adding this sentence exceeds MAX_PARA_LENGTH
+                        test_chunk = current_chunk + " " + sentence if current_chunk else sentence
+                        
+                        if len(test_chunk) > MAX_PARA_LENGTH and current_chunk:
+                            # Save current chunk and start new one with overlap
+                            chunks.append(current_chunk.strip())
+                            
+                            # Create overlap by keeping last N sentences
+                            overlap_text = " ".join(sentence_buffer[-overlap_sentences:]) if len(sentence_buffer) > overlap_sentences else current_chunk
+                            current_chunk = overlap_text + " " + sentence
+                            sentence_buffer = [sentence]
+                        else:
+                            current_chunk = test_chunk
+                            sentence_buffer.append(sentence)
+                    
+                    # Add remaining chunk
+                    if current_chunk.strip():
+                        chunks.append(current_chunk.strip())
+        
         return chunks
 
 
