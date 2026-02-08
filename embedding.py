@@ -22,50 +22,90 @@ class Chunk_generator:
         Semantic chunking that respects sentence boundaries.
         Combines sentences into chunks while maintaining semantic coherence.
         """
+        # Use semantic similarity between sentences to form coherent chunks.
         chunks = []
         overlap_sentences = 1  # Number of sentences to overlap between chunks
-        
+
+        # Instantiate embedder to compute sentence embeddings in batches
+        embedder = Embedder()
+
         for text in texts:
             paras = text.split("\n")
             for para in paras:
-                if len(para) > MIN_PARA_LENGTH:
-                    # Split paragraph into sentences for semantic chunking
-                    sentences = sent_tokenize(para)
-                    
-                    if not sentences:
-                        continue
-                    
-                    # Combine sentences into semantic chunks
-                    current_chunk = ""
-                    sentence_buffer = []
-                    
-                    for sentence in sentences:
-                        sentence = sentence.strip()
-                        if not sentence:
-                            continue
-                        
-                        # Check if adding this sentence exceeds MAX_PARA_LENGTH
-                        test_chunk = current_chunk + " " + sentence if current_chunk else sentence
-                        
-                        if len(test_chunk) > MAX_PARA_LENGTH and current_chunk:
-                            # Save current chunk and start new one with overlap
-                            chunks.append(current_chunk.strip())
-                            
-                            # Create overlap by keeping last N sentences
-                            overlap_text = " ".join(sentence_buffer[-overlap_sentences:]) if len(sentence_buffer) > overlap_sentences else current_chunk
-                            current_chunk = overlap_text + " " + sentence
-                            sentence_buffer = [sentence]
+                if len(para) <= MIN_PARA_LENGTH:
+                    continue
+
+                sentences = [s.strip() for s in sent_tokenize(para) if s.strip()]
+                if not sentences:
+                    continue
+
+                # Get embeddings for all sentences in the paragraph
+                try:
+                    sent_embs = embedder.generate_embedding(sentences, batch_size=BATCH_SIZE)
+                except Exception:
+                    # Fallback to simple length-based chunking if embedding fails
+                    current = ""
+                    for s in sentences:
+                        test = current + " " + s if current else s
+                        if len(test) > MAX_PARA_LENGTH and current:
+                            chunks.append(current.strip())
+                            current = s
                         else:
-                            current_chunk = test_chunk
-                            sentence_buffer.append(sentence)
-                    
-                    # Add remaining chunk
-                    if current_chunk.strip():
+                            current = test
+                    if current:
+                        chunks.append(current.strip())
+                    continue
+
+                # normalize embeddings for cosine similarity
+                norms = np.linalg.norm(sent_embs, axis=1, keepdims=True) + 1e-10
+                sent_embs = sent_embs / norms
+
+                # Build chunks by aggregating semantically-similar consecutive sentences
+                sentence_buffer = []
+                emb_buffer = []
+                current_chunk = ""
+
+                for idx, sentence in enumerate(sentences):
+                    emb = sent_embs[idx]
+
+                    if not current_chunk:
+                        current_chunk = sentence
+                        sentence_buffer = [sentence]
+                        emb_buffer = [emb]
+                        continue
+
+                    # compute mean embedding of current chunk
+                    mean_emb = np.mean(np.stack(emb_buffer, axis=0), axis=0)
+                    sim = float(np.dot(mean_emb, emb))
+
+                    test_chunk = current_chunk + " " + sentence
+
+                    # Merge if within length and semantically similar
+                    if len(test_chunk) <= MAX_PARA_LENGTH and sim >= 0.75:
+                        current_chunk = test_chunk
+                        sentence_buffer.append(sentence)
+                        emb_buffer.append(emb)
+                    else:
                         chunks.append(current_chunk.strip())
-        
+
+                        # create new chunk with overlap sentences (if available)
+                        if overlap_sentences > 0:
+                            keep = sentence_buffer[-overlap_sentences:]
+                            keep_embs = emb_buffer[-overlap_sentences:]
+                            overlap_text = " ".join(keep)
+                            current_chunk = (overlap_text + " " + sentence).strip()
+                            sentence_buffer = keep + [sentence]
+                            emb_buffer = keep_embs + [emb]
+                        else:
+                            current_chunk = sentence
+                            sentence_buffer = [sentence]
+                            emb_buffer = [emb]
+
+                if current_chunk:
+                    chunks.append(current_chunk.strip())
+
         return chunks
-
-
+    
 class Embedder:
 
     # def generate_embedding(self, chunks):
